@@ -1,10 +1,10 @@
-DROP TABLE IF EXISTS `groups`;
+DROP TABLE IF EXISTS `clinics_groups`;
 
 #
-# Table structure for table 'groups'
+# Table structure for table 'clinics_groups'
 #
 
-CREATE TABLE `groups` (
+CREATE TABLE `clinics_groups` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(20) NOT NULL,
   `description` varchar(100) NOT NULL,
@@ -12,26 +12,27 @@ CREATE TABLE `groups` (
 );
 
 #
-# Dumping data for table 'groups'
+# Dumping data for table 'clinics_groups'
 #
 
 INSERT INTO `groups` (`id`, `name`, `description`) VALUES
 	(1,'admin','Administrator'),
-	(2,'members','General User');
+	(2,'cs_users','Customer Service User'),
+	(3,'cs_admin','Customer Service Admin');
 
 
 
-DROP TABLE IF EXISTS `users`;
+DROP TABLE IF EXISTS `clinics_users`;
 
 #
-# Table structure for table 'users'
+# Table structure for table 'clinics_users'
 #
 
-CREATE TABLE `users` (
+CREATE TABLE `clinics_users` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `ip_address` varbinary(16) NOT NULL,
   `username` varchar(100) NOT NULL,
-  `password` varchar(40) NOT NULL,
+  `password` varchar(80) NOT NULL,
   `salt` varchar(40) DEFAULT NULL,
   `email` varchar(100) NOT NULL,
   `activation_code` varchar(40) DEFAULT NULL,
@@ -50,20 +51,20 @@ CREATE TABLE `users` (
 
 
 #
-# Dumping data for table 'users'
+# Dumping data for table 'clinics_users'
 #
 
-INSERT INTO `users` (`id`, `ip_address`, `username`, `password`, `salt`, `email`, `activation_code`, `forgotten_password_code`, `created_on`, `last_login`, `active`, `first_name`, `last_name`, `company`, `phone`) VALUES
+INSERT INTO `clinics_users` (`id`, `ip_address`, `username`, `password`, `salt`, `email`, `activation_code`, `forgotten_password_code`, `created_on`, `last_login`, `active`, `first_name`, `last_name`, `company`, `phone`) VALUES
 	('1',0x7f000001,'administrator','59beecdf7fc966e2f17fd8f65a4a9aeb09d4a3d4','9462e8eee0','admin@admin.com','',NULL,'1268889823','1268889823','1', 'Admin','istrator','ADMIN','0');
 
 
-DROP TABLE IF EXISTS `users_groups`;
+DROP TABLE IF EXISTS `clinics_users_groups`;
 
 #
-# Table structure for table 'users_groups'
+# Table structure for table 'clinics_users_groups'
 #
 
-CREATE TABLE `users_groups` (
+CREATE TABLE `clinics_users_groups` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `user_id` mediumint(8) unsigned NOT NULL,
   `group_id` mediumint(8) unsigned NOT NULL,
@@ -75,16 +76,24 @@ INSERT INTO `users_groups` (`id`, `user_id`, `group_id`) VALUES
 	(2,1,2);
 
 
-DROP TABLE IF EXISTS `login_attempts`;
+DROP TABLE IF EXISTS `clinics_login_attempts`;
 
 #
-# Table structure for table 'login_attempts'
+# Table structure for table 'clinics_login_attempts'
 #
 
-CREATE TABLE `login_attempts` (
+CREATE TABLE `clinics_login_attempts` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `ip_address` varbinary(16) NOT NULL,
   `login` varchar(100) NOT NULL,
   `time` int(11) unsigned DEFAULT NULL,
   PRIMARY KEY (`id`)
 );
+
+
+#
+# to accomodate password expiration - wh 
+#
+ALTER TABLE  `clinics_users` ADD  `last_password_change` INT NULL
+ALTER TABLE  `clinics_users` CHANGE  `last_password_change`  `last_password_change` INT( 11 ) UNSIGNED NULL DEFAULT NULL
+

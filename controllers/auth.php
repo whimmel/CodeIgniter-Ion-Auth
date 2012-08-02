@@ -1,5 +1,4 @@
 <?php defined('BASEPATH') OR exit('No direct script access allowed');
-
 class Auth extends CI_Controller {
 
 	function __construct()
@@ -35,12 +34,100 @@ class Auth extends CI_Controller {
 			$this->data['message'] = (validation_errors()) ? validation_errors() : $this->session->flashdata('message');
 
 			//list the users
-			$this->data['users'] = $this->ion_auth->users()->result();
-			foreach ($this->data['users'] as $k => $user)
-			{
-				$this->data['users'][$k]->groups = $this->ion_auth->get_users_groups($user->id)->result();
-			}
+// don't get the users here - wh
+// 			$this->data['users'] = $this->ion_auth->users()->result();
+// 			foreach ($this->data['users'] as $k => $user)
+// 			{
+// 				$this->data['users'][$k]->groups = $this->ion_auth->get_users_groups($user->id)->result();
+// 			}
 
+			
+			//validate create_user form input
+			$this->form_validation->set_rules('username', 'Username', 'required|xss_clean|max_length[100]');
+			$this->form_validation->set_rules('first_name', 'First Name', 'required|xss_clean');
+			$this->form_validation->set_rules('last_name', 'Last Name', 'required|xss_clean');
+			$this->form_validation->set_rules('email', 'Email Address', 'required|valid_email');
+			$this->form_validation->set_rules('phone1', 'First Part of Phone', 'required|xss_clean|min_length[3]|max_length[3]');
+			$this->form_validation->set_rules('phone2', 'Second Part of Phone', 'required|xss_clean|min_length[3]|max_length[3]');
+			$this->form_validation->set_rules('phone3', 'Third Part of Phone', 'required|xss_clean|min_length[4]|max_length[4]');
+			$this->form_validation->set_rules('company', 'Company Name', 'required|xss_clean');
+			$this->form_validation->set_rules('password', 'Password', 'required|min_length[' . $this->config->item('min_password_length', 'ion_auth') . ']|max_length[' . $this->config->item('max_password_length', 'ion_auth') . ']|matches[password_confirm]');
+			$this->form_validation->set_rules('password_confirm', 'Password Confirmation', 'required');
+			
+			if ($this->form_validation->run() == true)
+			{
+				$username = $this->input->post('username');
+				$email = $this->input->post('email');
+				$password = $this->input->post('password');
+			
+				$additional_data = array('first_name' => $this->input->post('first_name'),
+						'last_name' => $this->input->post('last_name'),
+						'company' => $this->input->post('company'),
+						'phone' => $this->input->post('phone1') . '-' . $this->input->post('phone2') . '-' . $this->input->post('phone3'),
+				);
+			}
+			if ($this->form_validation->run() == true && $this->ion_auth->register($username, $password, $email, $additional_data))
+			{ //check to see if we are creating the user
+				//redirect them back to the admin page
+				$this->session->set_flashdata('message', "User Created");
+				redirect("auth", 'refresh');
+			}
+			else
+			{ //display the create user form
+				//set the flash data error message if there is one
+				$this->data['message'] = (validation_errors() ? validation_errors() : ($this->ion_auth->errors() ? $this->ion_auth->errors() : $this->session->flashdata('message')));
+				
+				$this->data['username'] = array('name' => 'username',
+						'id' => 'username',
+						'type' => 'text',
+						'value' => $this->form_validation->set_value('username'),
+				);
+				$this->data['first_name'] = array('name' => 'first_name',
+						'id' => 'first_name',
+						'type' => 'text',
+						'value' => $this->form_validation->set_value('first_name'),
+				);
+				$this->data['last_name'] = array('name' => 'last_name',
+						'id' => 'last_name',
+						'type' => 'text',
+						'value' => $this->form_validation->set_value('last_name'),
+				);
+				$this->data['email'] = array('name' => 'email',
+						'id' => 'email',
+						'type' => 'text',
+						'value' => $this->form_validation->set_value('email'),
+				);
+				$this->data['company'] = array('name' => 'company',
+						'id' => 'company',
+						'type' => 'text',
+						'value' => $this->form_validation->set_value('company'),
+				);
+				$this->data['phone1'] = array('name' => 'phone1',
+						'id' => 'phone1',
+						'type' => 'text',
+						'value' => $this->form_validation->set_value('phone1'),
+				);
+				$this->data['phone2'] = array('name' => 'phone2',
+						'id' => 'phone2',
+						'type' => 'text',
+						'value' => $this->form_validation->set_value('phone2'),
+				);
+				$this->data['phone3'] = array('name' => 'phone3',
+						'id' => 'phone3',
+						'type' => 'text',
+						'value' => $this->form_validation->set_value('phone3'),
+				);
+				$this->data['password'] = array('name' => 'password',
+						'id' => 'password',
+						'type' => 'password',
+						'value' => $this->form_validation->set_value('password'),
+				);
+				$this->data['password_confirm'] = array('name' => 'password_confirm',
+						'id' => 'password_confirm',
+						'type' => 'password',
+						'value' => $this->form_validation->set_value('password_confirm'),
+				);
+			}
 
 			$this->load->view('auth/index', $this->data);
 		}
@@ -62,9 +149,29 @@ class Auth extends CI_Controller {
 
 			if ($this->ion_auth->login($this->input->post('identity'), $this->input->post('password'), $remember))
 			{ //if the login is successful
-				//redirect them back to the home page
-				$this->session->set_flashdata('message', $this->ion_auth->messages());
-				redirect($this->config->item('base_url'), 'refresh');
+				
+				// see if their password is expired or if this is the first time through
+				$user = $this->ion_auth->user()->row();
+
+				if (($user->last_password_change && $user->last_password_change < (time() - $this->config->item('password_expiration', 'ion_auth'))
+				||  (!$user->last_login))) {
+					
+					$this->ion_auth->set_message('password_expired');
+					
+					$this->session->set_flashdata('message', $this->ion_auth->messages());
+					redirect('auth/change_password', 'refresh');
+					
+				} else {
+					// nag the user if their password is going to expire soon
+					if ($user->last_password_change < (time() - $this->config->item('password_expiration_warn', 'ion_auth'))) {
+						$this->ion_auth->set_message('password_will_expire');
+					}
+					
+					//redirect them back to the home page
+					$this->session->set_flashdata('message', $this->ion_auth->messages());
+					
+					redirect($this->config->item('base_url'), 'refresh');
+				}
 			}
 			else
 			{ //if the login was un-successful
@@ -108,7 +215,7 @@ class Auth extends CI_Controller {
 	function change_password()
 	{
 		$this->form_validation->set_rules('old', 'Old password', 'required');
-		$this->form_validation->set_rules('new', 'New Password', 'required|min_length[' . $this->config->item('min_password_length', 'ion_auth') . ']|max_length[' . $this->config->item('max_password_length', 'ion_auth') . ']|matches[new_confirm]');
+		$this->form_validation->set_rules('new', 'New Password', 'required|min_length[' . $this->config->item('min_password_length', 'ion_auth') . ']|max_length[' . $this->config->item('max_password_length', 'ion_auth') . ']|matches[new_confirm]|callback__check_password_changed');
 		$this->form_validation->set_rules('new_confirm', 'Confirm New Password', 'required');
 
 		if (!$this->ion_auth->logged_in())
@@ -168,6 +275,18 @@ class Auth extends CI_Controller {
 				redirect('auth/change_password', 'refresh');
 			}
 		}
+	}
+	
+	// _check_password_changed
+	public function _check_password_changed($new_password) {
+		$user = $this->ion_auth->user()->row();
+		
+		if ($this->ion_auth->hash_password_db($user->id, $new_password)) {
+			$this->form_validation->set_message('_check_password_changed', 'New password must be different from old password.');
+			return FALSE;
+		} 
+		
+		return TRUE;
 	}
 
 	//forgot password
@@ -453,6 +572,13 @@ class Auth extends CI_Controller {
 
 	function _valid_csrf_nonce()
 	{
+		// this should already be done for ALL forms - wh
+
+		if ($this->config->item('csrf_protection') === TRUE)
+			// short-circuit because the Ion_Auth method sends the cookies after the headers or something
+			// it's not working. I'll trust the built-in CI CSRF stuff. - wh
+			return TRUE;
+		
 		if ($this->input->post($this->session->flashdata('csrfkey')) !== FALSE &&
 				$this->input->post($this->session->flashdata('csrfkey')) == $this->session->flashdata('csrfvalue'))
 		{
@@ -463,5 +589,125 @@ class Auth extends CI_Controller {
 			return FALSE;
 		}
 	}
+	
+	function groups_xml() {
+		if (!$this->ion_auth->is_admin())
+			show_404();
+		
+		if (!isset($_GET['id']) || $_GET['id'] == 0)
+			return;
+		
+		$this->load->helper('security_helper');
+		
+		$id = xss_clean($_GET['id']);
+		
+		$groups = $this->ion_auth->get_users_groups($id)->result();
+		$x  = "<?xml version='1.0' encoding='utf-8'?>
+	<rows>
+	";
+		if (is_array($groups)) {
+			foreach ($groups as $k => $group) {
+				$x .= "
+			<row>
+				<cell>{$group->name}</cell>
+				<cell><![CDATA[{$group->description}]]></cell>
+			</row>
+			";
+			}
+		}
+		$x .= "</rows>";
+		
+		echo $x;
+	}
+	
+	function users_update() {
+		if (!$this->ion_auth->is_admin()) 
+			show_404();
+		
+		$this->load->helper('security_helper');
+		
+		$data = array();
+		if (isset($_POST['first_name'])) {
+			$data['first_name'] = xss_clean($_POST['first_name']);
+		}
+		if (isset($_POST['last_name'])) {
+			$data['last_name']  = xss_clean($_POST['last_name']);
+		}
+		if (isset($_POST['email'])) {      
+			$data['email']      = xss_clean($_POST['email']);
+		}
+		if (isset($_POST['active'])) {
+			$data['active']     = xss_clean($_POST['active']) == "Active";
+		}
+		if (isset($_POST['id'])) {
+			$id = xss_clean($_POST['id']);
+		}
+		
+		if (!$this->ion_auth->update($id, $data)) {
+			show_error("500", "Internal Serwer Error");
+		}
+		
+		return TRUE;
+	}
+	
+	function users_xml() {
+		if (!$this->ion_auth->is_admin())
+			show_404();
+		
+		$this->load->helper('security_helper');
+		
+		$page  = isset($_GET['page']) ? xss_clean($_GET['page']) :  1;
+		$limit = isset($_GET['rows']) ? xss_clean($_GET['rows']) : 15;
+		$sidx  = isset($_GET['sidx']) ? xss_clean($_GET['sidx']) : 'username';
+		$sord  = isset($_GET['sord']) ? xss_clean($_GET['sord']) : '';
+		$start = $limit * $page - $limit;
+		$start = ($start < 0) ? 0 : $start;
+				
+		
+		$users = $this->ion_auth->limit($limit)
+		       					->offset($start)
+		       					->order_by($sidx, $sord)
+			                    ->users()->result();
+		
+		$records = count($this->ion_auth->users()->result());
+		$pages = round($records / $limit); 
+		
+		$x  = "<?xml version='1.0' encoding='utf-8'?>
+	<rows>
+	<page>{$page}</page>
+	<total>{$pages}</total>
+	<records>{$records}</records>
+	";
+		
+		foreach($users as $k => $user) {
+			$groups = $this->ion_auth->get_users_groups($user->id)->result();
 
+			$first_name = htmlspecialchars($user->first_name, ENT_QUOTES);
+			$last_name = htmlspecialchars($user->last_name, ENT_QUOTES);
+
+			$group_array = array();
+			foreach($groups as $group) {
+				$group_array[] = $group->name;
+			}
+			$groupstr = implode(", ", $group_array);
+			
+			$active = $user->active ? "Active" : "Inactive";
+			 
+			$x .= "		
+		<row id = '{$user->id}'>
+			<cell>{$user->username}</cell>
+			<cell>{$first_name}</cell>
+			<cell>{$last_name}</cell>
+			<cell>{$user->email}</cell>
+			<cell>{$groupstr}</cell>
+			<cell>{$active}</cell>
+		</row>";
+		}
+		
+		$x .= "
+	</rows>";
+		
+		echo $x;
+	
+	}
 }

@@ -31,10 +31,11 @@ $config['collections']['login_attempts'] = 'login_attempts';
 | -------------------------------------------------------------------------
 | Database table names.
 */
-$config['tables']['users']           = 'users';
-$config['tables']['groups']          = 'groups';
-$config['tables']['users_groups']    = 'users_groups';
-$config['tables']['login_attempts']  = 'login_attempts';
+$config['tables']['users']           = 'clinics_users';
+$config['tables']['groups']          = 'clinics_groups';
+$config['tables']['users_groups']    = 'clinics_users_groups';
+$config['tables']['login_attempts']  = 'clinics_login_attempts';
+$config['tables']['login_log']       = 'clinics_login_log'; // keep an eye on this table
 
 /*
  | Users table column and Group table column you want to join WITH.
@@ -81,11 +82,11 @@ $config['max_rounds']     = 9;
  | The controller should check this function and act
  | appropriately. If this variable set to 0, there is no maximum.
  */
-$config['site_title']           = "Example.com"; 		// Site Title, example.com
-$config['admin_email']          = "admin@example.com"; 	// Admin Email, admin@example.com
-$config['default_group']        = 'members'; 			// Default group, use name
+$config['site_title']           = "Clinic Portal"; 		// Site Title, example.com
+$config['admin_email']          = "webmaster@avee.com";	// Admin Email, admin@example.com
+$config['default_group']        = 'cs_users'; 			// Default group, use name
 $config['admin_group']          = 'admin'; 				// Default administrators group, use name
-$config['identity']             = 'email'; 				// A database column which is used to login with
+$config['identity']             = 'username'; 			// A database column which is used to login with
 $config['min_password_length']  = 8; 					// Minimum Required Length of Password
 $config['max_password_length']  = 20; 					// Maximum Allowed Length of Password
 $config['email_activation']     = FALSE; 				// Email Activation for registration
@@ -93,10 +94,15 @@ $config['manual_activation']    = FALSE; 				// Manual Activation for registrati
 $config['remember_users']       = TRUE; 				// Allow users to be remembered and enable auto-login
 $config['user_expire']          = 86500; 				// How long to remember the user (seconds). Set to zero for no expiration
 $config['user_extend_on_login'] = FALSE; 				// Extend the users cookies everytime they auto-login
-$config['track_login_attempts'] = FALSE;				// Track the number of failed login attempts for each user or ip.
+$config['track_login_attempts'] = TRUE;	     			// Track the number of failed login attempts for each user or ip.
+$config['log_logins']           = TRUE; 				// Log ALL login attempts forever and ever. 
 $config['maximum_login_attempts']     = 3; 				// The maximum number of failed login attempts.
+$config['maximum_ip_attempts']  = 20;					// The maximum number of login attempts from a given IP address
 $config['forgot_password_expiration'] = 0; 				// The number of seconds after which a forgot password request will expire. If set to 0, forgot password requests will not expire.
+$config['password_expiration']      = 90*24*60*60;		// The number of seconds after which a user's password expires
+$config['password_expiration_warn'] = 60*24*60*60;		// The number of seconds after which we begin nagging a user to change his password
 
+$config['harvest_starlims_passwords'] = TRUE;			// temporary measure to convert from Starlims for authentication - wh
 
 /*
  | -------------------------------------------------------------------------
@@ -106,7 +112,7 @@ $config['forgot_password_expiration'] = 0; 				// The number of seconds after wh
  | 	  'file' = Use the default CI config or use from a config file
  | 	  array  = Manually set your email config settings
  */
-$config['use_ci_email'] = FALSE; // Send Email using the builtin CI email class, if false it will return the code and the identity
+$config['use_ci_email'] = TRUE; // Send Email using the builtin CI email class, if false it will return the code and the identity
 $config['email_config'] = array(
 	'mailtype' => 'html',
 );
@@ -143,6 +149,14 @@ $config['email_forgot_password'] = 'forgot_password.tpl.php';
  | Default: new_password.tpl.php
  */
 $config['email_forgot_password_complete'] = 'new_password.tpl.php';
+
+/*
+ | -------------------------------------------------------------------------
+ | Blocked IP address warning Email Template
+ | -------------------------------------------------------------------------
+ | Default: 
+ */
+$config['email_blocked_ip'] = 'blocked_ip.tpl.php';
 
 /*
  | -------------------------------------------------------------------------

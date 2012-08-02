@@ -25,6 +25,8 @@ $lang['password_change_successful'] 	 	 = 'Password Successfully Changed';
 $lang['password_change_unsuccessful'] 	  	 = 'Unable to Change Password';
 $lang['forgot_password_successful'] 	 	 = 'Password Reset Email Sent';
 $lang['forgot_password_unsuccessful'] 	 	 = 'Unable to Reset Password';
+$lang['password_expired']					 = 'Password Expired - Please Change Your Password Now';
+$lang['password_will_expire']				 = 'Your Password Will Expire Soon - Please Change Your Password';
 
 // Activation
 $lang['activate_successful'] 		  	     = 'Account Activated';
@@ -37,8 +39,9 @@ $lang['activation_email_unsuccessful']   	 = 'Unable to Send Activation Email';
 // Login / Logout
 $lang['login_successful'] 		  	         = 'Logged In Successfully';
 $lang['login_unsuccessful'] 		  	     = 'Incorrect Login';
-$lang['login_unsuccessful_not_active'] 		 = 'Account is inactive';
+$lang['login_unsuccessful_not_active'] 		 = 'Account is inactive - Call Customer Service +1.866.928.9877';
 $lang['logout_successful'] 		 	         = 'Logged Out Successfully';
+
 
 // Account Changes
 $lang['update_successful'] 		 	         = 'Account Information Successfully Updated';

@@ -501,6 +501,8 @@ class Ion_auth_model extends CI_Model
 		$this->trigger_events('extra_where');
 		$this->db->update($this->tables['users'], $data, array($this->identity_column => $identity));
 
+		$this->update_last_password_change($result->id);
+		
 		$return = $this->db->affected_rows() == 1;
 		if ($return)
 		{
@@ -569,6 +571,8 @@ class Ion_auth_model extends CI_Model
 				$this->set_error('password_change_unsuccessful');
 			}
 
+			$this->update_last_password_change($result->id);
+			
 			return $return;
 		}
 
@@ -716,6 +720,8 @@ class Ion_auth_model extends CI_Model
 
 			$this->db->update($this->tables['users'], $data, array('forgotten_password_code' => $code));
 
+			$this->update_last_password_change($profile->id);
+			
 			$this->trigger_events(array('post_forgotten_password_complete', 'post_forgotten_password_complete_successful'));
 			return $password;
 		}
@@ -829,7 +835,9 @@ class Ion_auth_model extends CI_Model
 		}
 
 		$this->trigger_events('extra_where');
-
+		
+		$identity = strtoupper($identity); // historically we use an uppercase username - wh
+		
 		$query = $this->db->select($this->identity_column . ', username, email, id, password, active, last_login')
 		                  ->where($this->identity_column, $this->db->escape_str($identity))
 		                  ->limit(1)
@@ -839,8 +847,42 @@ class Ion_auth_model extends CI_Model
 		{
 			$user = $query->row();
 			
+			if ($this->config->item('harvest_starlims_passwords', 'ion_auth') === TRUE) {
+				
+				if (isset($user->password) && empty($user->password)) {
+					log_message("DEBUG", "Harvesting {$identity} from Starlims.");
+					
+					$this->load->model('Starlims');
+					
+					$p = array( 
+						array(
+							"type" => "string", 
+							"value" => $identity
+						), 
+						array(
+							"type" => "string", 
+							"value" => $password
+						)
+					);
+					
+					$this->Starlims->debug = false;
+					
+					//the result comes in JSON format
+					
+					$result = $this->Starlims->Call("Authentication.CheckPassword", $p);
+					
+					$pass = json_decode($result["JSON"]);
+						
+					if ($pass == "1") {
+						// Starlims says the password is good, so we'll store it in our database
+						$this->reset_password($identity, $password);
+						$this->activate($user->id);
+					}
+				}
+			}
+			
 			$password = $this->hash_password_db($user->id, $password);
-
+			
 			if ($password === TRUE)
 			{
 				if ($user->active == 0)
@@ -863,15 +905,17 @@ class Ion_auth_model extends CI_Model
 				
 				$this->clear_login_attempts($identity);
 				
+				$this->log_login($identity); // log all successful logins
+				
 				$this->session->set_userdata($session_data);
 
 				if ($remember && $this->config->item('remember_users', 'ion_auth'))
 				{
 					$this->remember_user($user->id);
 				}
-
+				
 				$this->trigger_events(array('post_login', 'post_login_successful'));
-				$this->set_message('login_successful');
+				//$this->set_message('login_successful');
 
 				return TRUE;
 			}
@@ -881,6 +925,53 @@ class Ion_auth_model extends CI_Model
 		$this->hash_password($password);
 		
 		$this->increase_login_attempts($identity);
+		
+		// wh - check if login attempts exceeded limit
+		
+		// also consider blocking this IP entirely and send an email
+		if ($this->config->item('track_login_attempts', 'ion_auth'))
+		{
+			$attempts = $this->get_attempts_num($identity);
+			
+			if ($this->is_max_login_attempts_exceeded($identity)) {
+				// see if it is a valid user
+				if ($this->identity_check($identity) && isset($user)) {
+					// hopefully $user is still set from above
+					$this->deactivate($user->id);
+				}
+			} else {
+				// see about this IP address
+				if ($this->config->item('track_ip_attempts')
+				 && $this->get_attempts_num(NULL) > $this->config->item('maximum_ip_attempts')) {
+					// send an email -- this might be a lot of emails
+					$message = $this->load->view($this->config->item('email_templates', 'ion_auth').$this->config->item('email_activate', 'ion_auth'), $data, true);
+					
+					$this->email->clear();
+					$this->email->from($this->config->item('admin_email', 'ion_auth'), $this->config->item('site_title', 'ion_auth'));
+					$this->email->to($email);
+					$this->email->subject($this->config->item('site_title', 'ion_auth') . ' - ' . $this->lang->line('email_activation_subject'));
+					$this->email->message($message);
+					
+					if ($this->email->send() == TRUE)
+					{
+						$this->ion_auth_model->trigger_events(array('post_account_creation', 'post_account_creation_successful', 'activation_email_successful'));
+						$this->set_message('activation_email_successful');
+						return $id;
+					}					
+				}
+			}
+			
+			// add a custom message to show the incorrect login countdown if this is a user we know about
+			if ($this->identity_check($identity)) { 
+				$remain = $this->config->item('maximum_login_attempts', 'ion_auth') - $this->get_attempts_num($identity);
+				if ($remain >= 0) {
+					$this->set_error(sprintf(" %d Login Attempts Remain ", $remain));
+				} else {
+					$this->set_error('login_unsuccessful_not_active');
+				}
+				
+			}
+		}
 		
 		$this->trigger_events('post_login_unsuccessful');
 		$this->set_error('login_unsuccessful');
@@ -900,7 +991,7 @@ class Ion_auth_model extends CI_Model
 			$max_attempts = $this->config->item('maximum_login_attempts', 'ion_auth');
 			if ($max_attempts > 0) {
 				$attempts = $this->get_attempts_num($identity);
-				return $attempts >= $max_attempts;
+				return $attempts > $max_attempts;
 			}
 		}
 		return FALSE;
@@ -919,8 +1010,14 @@ class Ion_auth_model extends CI_Model
 			$ip_address = $this->_prepare_ip($this->input->ip_address());;
 			
 			$this->db->select('1', FALSE);
-			$this->db->where('ip_address', $ip_address);
-			if (strlen($identity) > 0) $this->db->or_where('login', $identity);
+			
+			// if identity is specified, only count attempts with that identity
+			if (strlen($identity) > 0) {
+				$this->db->where('login', $identity);
+			} else {
+				// otherwise count the ip address attempts
+				$this->db->where('ip_address', $ip_address);
+			}
 
 			$qres = $this->db->get($this->tables['login_attempts']);
 			return $qres->num_rows();
@@ -952,7 +1049,7 @@ class Ion_auth_model extends CI_Model
 		if ($this->config->item('track_login_attempts', 'ion_auth')) {
 			$ip_address = $this->_prepare_ip($this->input->ip_address());
 			
-			$this->db->where(array('ip_address' => $ip_address, 'login' => $identity));
+			$this->db->where(array('login' => $identity)); // wh - removed where for ip / if user has two IPs like me, could accumulate more than max attempts
 			// Purge obsolete login attempts
 			$this->db->or_where('time <', time() - $expire_period, FALSE);
 
@@ -1416,7 +1513,41 @@ class Ion_auth_model extends CI_Model
 
 		return $this->db->affected_rows() == 1;
 	}
+	
+	/** 
+	 * update_last_password_change
+	 * 
+	 * @return bool
+	 * @author William Himmelstoss
+	 */
+	public function update_last_password_change($id)
+	{
+		$this->trigger_events('update_last_password_change');
+		
+		$this->load->helper('date');
+		
+		$this->trigger_events('extra_where');
+		
+		$this->db->update($this->tables['users'], array('last_password_change' => time()), array('id' => $id));
+		
+		return $this->db->affected_rows() == 1;
+	}
 
+	/**
+	 * log_login
+	 * 
+	 * @return bool
+	 * @author William Himmelstoss
+	 */
+	public function log_login($identity)
+	{
+		if ($this->config->item('log_logins', 'ion_auth')) {
+			$ip_address = $this->_prepare_ip($this->input->ip_address());
+			return $this->db->insert($this->tables['login_log'], array('ip_address' => $ip_address, 'login' => $identity, 'time' => time()));
+		}
+		return FALSE;
+	}
+	
 	/**
 	 * set_lang
 	 *
@@ -1541,6 +1672,7 @@ class Ion_auth_model extends CI_Model
 
 			$this->session->set_userdata($session_data);
 
+			$this->log_login($user->id); // log remembered logins too
 
 			//extend the users cookies if the option is enabled
 			if ($this->config->item('user_extend_on_login', 'ion_auth'))
@@ -1562,6 +1694,7 @@ class Ion_auth_model extends CI_Model
 		$this->_ion_hooks->{$event}[$name]->class     = $class;
 		$this->_ion_hooks->{$event}[$name]->method    = $method;
 		$this->_ion_hooks->{$event}[$name]->arguments = $arguments;
+		echo "$name, hook set, $method<br>";
 	}
 
 	public function remove_hook($event, $name)
@@ -1585,10 +1718,8 @@ class Ion_auth_model extends CI_Model
 		if (isset($this->_ion_hooks->{$event}[$name]) && method_exists($this->_ion_hooks->{$event}[$name]->class, $this->_ion_hooks->{$event}[$name]->method))
 		{
 			$hook = $this->_ion_hooks->{$event}[$name];
-
 			return call_user_func_array(array($hook->class, $hook->method), $hook->arguments);
 		}
-
 		return FALSE;
 	}
 
@@ -1608,9 +1739,11 @@ class Ion_auth_model extends CI_Model
 				foreach ($this->_ion_hooks->$events as $name => $hook)
 				{
 					$this->_call_hook($events, $name);
+						
 				}
 			}
 		}
+		
 	}
 
 	/**
